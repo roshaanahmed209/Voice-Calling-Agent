@@ -166,15 +166,17 @@ def _wrong_key_hint(res: httpx.Response) -> bool:
     return "private key" in text and "public key" in text
 
 
+WEB_CALL_BUILDER = "web-v3"
+
+
 def _create_vapi_web_call() -> dict:
     """Create a live Daily room on Vapi. The browser joins that URL.
 
-    POST /call is a server route and must use the private key.
-    POST /call/web is the client SDK route and must use the public key.
-    Hitting /call/web with the private key returns Vapi's "Invalid Key" hint
-    and used to abort before /call was tried.
+    Web-call DTOs accept assistantId only. Phone fields like `customer`
+    and `name` are rejected with "property customer should not exist".
     """
-    if not settings.vapi_assistant_id:
+    assistant_id = (settings.vapi_assistant_id or "").strip()
+    if not assistant_id:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "VAPI_ASSISTANT_ID is not configured.")
 
     private = (settings.vapi_api_key or "").strip()
@@ -185,71 +187,79 @@ def _create_vapi_web_call() -> dict:
             "Set VAPI_API_KEY (private) and VAPI_PUBLIC_KEY (public) in .env.",
         )
 
-    bodies = [
-        {
-            "assistantId": settings.vapi_assistant_id,
-            "name": "Browser intake",
-            "customer": {"name": "Browser"},
-            "assistantOverrides": {
-                "customerJoinTimeoutSeconds": 90,
-                "endCallFunctionEnabled": False,
-                "voice": {"provider": "vapi", "voiceId": "Elliot"},
-            },
-        },
-        {
-            "assistantId": settings.vapi_assistant_id,
-            "customer": {"name": "Browser"},
-        },
-    ]
+    body = {"assistantId": assistant_id}
+    logger.info(
+        "web.start builder=%s assistant_set=%s private_set=%s public_set=%s body=%s",
+        WEB_CALL_BUILDER,
+        bool(assistant_id),
+        bool(private),
+        bool(public),
+        body,
+    )
 
-    # (path, key) — private key only on /call; public key only on /call/web.
-    attempts: list[tuple[str, str]] = []
+    # Private key → server /call. Public key → client /call/web. Never mix.
+    attempts: list[tuple[str, str, str]] = []
     if private:
-        attempts.append(("/call", private))
-    if public and public != private:
-        attempts.append(("/call", public))  # env vars swapped
-        attempts.append(("/call/web", public))
-    elif public:
-        attempts.append(("/call/web", public))
+        attempts.append(("/call", private, "private"))
+    if public:
+        attempts.append(("/call/web", public, "public"))
 
+    trail: list[dict] = []
     last: httpx.Response | None = None
     try:
         with httpx.Client(timeout=30) as client:
-            for body in bodies:
-                for path, key in attempts:
-                    res = client.post(
-                        f"https://api.vapi.ai{path}",
-                        headers=_vapi_headers(key),
-                        json=body,
+            for path, key, key_kind in attempts:
+                logger.info("web.attempt builder=%s path=%s key=%s body=%s",
+                            WEB_CALL_BUILDER, path, key_kind, body)
+                res = client.post(
+                    f"https://api.vapi.ai{path}",
+                    headers=_vapi_headers(key),
+                    json=body,
+                )
+                last = res
+                vapi_msg = "ok" if res.status_code < 400 else _vapi_error_message(res)
+                step = {
+                    "path": path,
+                    "key": key_kind,
+                    "body": body,
+                    "status": res.status_code,
+                    "vapi": vapi_msg,
+                }
+                trail.append(step)
+                logger.info("web.attempt.result %s", step)
+                if res.status_code < 400:
+                    payload = res.json()
+                    logger.info(
+                        "web.created id=%s keys=%s url=%s",
+                        payload.get("id"),
+                        list(payload)[:20],
+                        bool(_web_call_url(payload)),
                     )
-                    last = res
-                    if res.status_code < 400:
-                        if key == public and path == "/call":
-                            logger.warning(
-                                "web.used_public_key_on_server_api — "
-                                "VAPI_API_KEY and VAPI_PUBLIC_KEY look swapped in .env"
-                            )
-                        return res.json()
-                    if res.status_code in (400, 404, 405, 422) or _wrong_key_hint(res):
-                        continue
-                    break
+                    return payload
     except httpx.HTTPError:
         logger.exception("web.vapi_unreachable")
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY,
-            "Could not reach Vapi to start the browser call.",
+            {
+                "message": "Could not reach Vapi to start the browser call.",
+                "debug": {"builder": WEB_CALL_BUILDER, "attempts": trail},
+            },
         ) from None
 
-    logger.warning("web.vapi_rejected status=%s body=%s", last.status_code if last else 0,
-                   (last.text[:500] if last is not None else ""))
-    hint = (
-        "Vapi rejected the key. In the Vapi dashboard, Settings → API Keys: "
-        "put the Private key in VAPI_API_KEY and the Public key in VAPI_PUBLIC_KEY."
-    )
+    logger.warning("web.vapi_rejected builder=%s trail=%s", WEB_CALL_BUILDER, trail)
     detail = _vapi_error_message(last) if last is not None else "Vapi rejected the browser call."
     if last is not None and _wrong_key_hint(last):
-        detail = hint
-    raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail)
+        detail = (
+            "Vapi rejected the key. Settings → API Keys: "
+            "Private → VAPI_API_KEY, Public → VAPI_PUBLIC_KEY."
+        )
+    raise HTTPException(
+        status.HTTP_502_BAD_GATEWAY,
+        {
+            "message": f"[{WEB_CALL_BUILDER}] {detail}",
+            "debug": {"builder": WEB_CALL_BUILDER, "attempts": trail},
+        },
+    )
 
 
 @router.post("/web", status_code=status.HTTP_201_CREATED, summary="Start a browser call")

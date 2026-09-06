@@ -97,15 +97,15 @@ async def http_handler(request: Request, exc: StarletteHTTPException):
         409: "conflict",
         429: "rate_limited",
     }
+    detail = exc.detail
+    error = {"code": codes.get(exc.status_code, "error"), "message": detail}
+    if isinstance(detail, dict):
+        error["message"] = detail.get("message") or str(detail)
+        if detail.get("debug") is not None:
+            error["debug"] = detail["debug"]
     return JSONResponse(
         status_code=exc.status_code,
-        content={
-            "data": None,
-            "error": {
-                "code": codes.get(exc.status_code, "error"),
-                "message": exc.detail,
-            },
-        },
+        content={"data": None, "error": error},
     )
 
 

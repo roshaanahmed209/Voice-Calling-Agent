@@ -404,13 +404,24 @@ function esc(s) {
 }
 
 async function api(path, options = {}) {
+  console.log("[api] →", options.method || "GET", path);
   const res = await fetch(path, { credentials: "same-origin", ...options });
   const body = await res.json().catch(() => ({ error: { message: "Unreadable response." } }));
+  if (!res.ok) {
+    console.error("[api] ←", res.status, path, body);
+  } else {
+    console.log("[api] ←", res.status, path, body);
+  }
   if (res.status === 401 && path !== "/auth/me" && path !== "/auth/login") {
     showLogin();
     throw new Error(body?.error?.message || "Sign in required.");
   }
-  if (!res.ok) throw new Error(body?.error?.message || `Request failed (${res.status}).`);
+  if (!res.ok) {
+    const err = new Error(body?.error?.message || `Request failed (${res.status}).`);
+    err.debug = body?.error?.debug;
+    err.status = res.status;
+    throw err;
+  }
   return body.data;
 }
 
@@ -812,6 +823,7 @@ $("web-call-btn").addEventListener("click", async () => {
   $("dial-error").textContent = "";
   const btn = $("web-call-btn");
   if (webCallActive) {
+    console.log("[web-call] user ended the call");
     endingByUser = true;
     await destroyDailyCall();
     resetWebCallUi();
@@ -821,12 +833,20 @@ $("web-call-btn").addEventListener("click", async () => {
   }
   btn.disabled = true;
   setWebStatus("Connecting to Robin…");
+  console.log("[web-call] click Daily=%s", Boolean(window.Daily));
   try {
     const Daily = await waitForDaily();
+    console.log("[web-call] Daily ready, requesting microphone");
     const preview = await navigator.mediaDevices.getUserMedia({ audio: true });
     preview.getTracks().forEach((t) => t.stop());
+    console.log("[web-call] microphone granted, POST /calls/web");
 
     const started = await api("/calls/web", { method: "POST" });
+    console.log("[web-call] created", {
+      id: started.vapi_call_id || started.call_id,
+      url: started.web_call_url,
+      status: started.status,
+    });
     if (!started.web_call_url) {
       throw new Error("Vapi did not return a browser-call URL.");
     }
@@ -841,6 +861,7 @@ $("web-call-btn").addEventListener("click", async () => {
       subscribeToTracksAutomatically: true,
     });
     dailyCall.on("joined-meeting", () => {
+      console.log("[web-call] joined Daily room");
       webCallActive = true;
       btn.textContent = "End browser call";
       btn.disabled = false;
@@ -848,17 +869,20 @@ $("web-call-btn").addEventListener("click", async () => {
       toast("Robin is on the line. Speak after she greets you.");
     });
     dailyCall.on("left-meeting", async () => {
+      console.log("[web-call] left Daily room");
       if (endingByUser) {
         endingByUser = false;
         return;
       }
       const reason = await explainEndedCall(activeVapiCallId);
+      console.log("[web-call] endedReason", reason || "(none)");
       await destroyDailyCall();
       resetWebCallUi(reason || undefined);
       if (!reason) toast("Browser call ended.");
       refresh();
     });
     dailyCall.on("error", async (err) => {
+      console.error("[web-call] Daily error", err);
       if (endingByUser) return;
       const dailyMsg = vapiErrorText(err);
       const reason = await explainEndedCall(activeVapiCallId);
@@ -867,8 +891,11 @@ $("web-call-btn").addEventListener("click", async () => {
       refresh();
     });
 
+    console.log("[web-call] joining", started.web_call_url);
     await dailyCall.join({ url: started.web_call_url });
   } catch (err) {
+    console.error("[web-call] failed", err, err.debug || "");
+    if (err.debug) console.error("[web-call] vapi attempts", err.debug);
     await destroyDailyCall();
     resetWebCallUi(err.name === "NotAllowedError"
       ? "Microphone permission is required for a browser call."
