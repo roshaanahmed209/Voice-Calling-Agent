@@ -180,6 +180,14 @@
   }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
+<script type="importmap">
+{
+  "imports": {
+    "@daily-co/daily-js": "/daily-shim.js"
+  }
+}
+</script>
+<script src="https://unpkg.com/@daily-co/daily-js@0.87.0/dist/daily.js"></script>
 </head>
 <body>
 
@@ -270,7 +278,7 @@
     <div class="call-grid">
       <div class="card">
         <h2 style="margin:0 0 6px;font-size:20px">Call a number</h2>
-        <p class="hint">Robin dials from +1 (516) 583-1185. Vapi-bought numbers have a daily outbound limit — if that fails, use a browser call or have someone dial in.</p>
+        <p class="hint">Robin dials from +1 (516) 583-1185. Vapi-bought numbers have a daily outbound limit — if that fails, use a browser call or have someone dial in. Browser calls need a microphone; allow it when the browser asks.</p>
         <form id="dial-form" class="call-form" style="flex-direction:column;align-items:stretch">
           <div class="field">
             <label for="dial-patient">Existing patient (optional)</label>
@@ -675,6 +683,8 @@ $("login-form").addEventListener("submit", async (e) => {
     });
     showApp(data.username);
     await refresh();
+    loadVapiSdk().catch(() => {});
+    ensureDialConfig().catch(() => {});
   } catch (err) {
     $("login-error").textContent = err.message;
   } finally {
@@ -736,48 +746,109 @@ $("dial-form").addEventListener("submit", async (e) => {
 
 let vapiClient = null;
 let webCallActive = false;
+let vapiCtor = null;
+let dialConfig = null;
+
+function vapiErrorText(err) {
+  if (!err) return "Browser call failed.";
+  if (typeof err === "string") return err;
+  const inner = err.error || err;
+  return (
+    inner.message ||
+    err.message ||
+    inner.errorMsg ||
+    inner.msg ||
+    (err.type ? `${err.type}: ${inner.type || "unknown error"}` : "") ||
+    "Browser call failed."
+  );
+}
+
+async function loadVapiSdk() {
+  if (vapiCtor) return vapiCtor;
+  for (let i = 0; i < 40 && !window.Daily; i++) {
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  if (!window.Daily) {
+    throw new Error("Daily.js failed to load. Refresh the page and try again.");
+  }
+  const mod = await import("https://esm.sh/@vapi-ai/web@2.7.0?external=@daily-co/daily-js");
+  vapiCtor = mod.default?.default || mod.default || mod.Vapi;
+  if (typeof vapiCtor !== "function") {
+    throw new Error("Vapi web SDK did not load correctly.");
+  }
+  return vapiCtor;
+}
+
+async function ensureDialConfig() {
+  if (dialConfig?.public_key && dialConfig?.assistant_id) return dialConfig;
+  dialConfig = await api("/calls/dial-config");
+  return dialConfig;
+}
+
+function resetWebCallUi(message) {
+  webCallActive = false;
+  const btn = $("web-call-btn");
+  btn.textContent = "Call from this browser";
+  btn.disabled = false;
+  if (message) {
+    $("dial-error").textContent = message;
+    toast(message);
+  }
+}
+
+function bindVapiClient(client) {
+  client.on("call-end", () => {
+    const hadError = Boolean($("dial-error").textContent);
+    resetWebCallUi();
+    if (!hadError) toast("Browser call ended.");
+    refresh();
+  });
+  client.on("error", (err) => {
+    resetWebCallUi(vapiErrorText(err));
+  });
+  return client;
+}
 
 $("web-call-btn").addEventListener("click", async () => {
   $("dial-error").textContent = "";
   const btn = $("web-call-btn");
   if (webCallActive && vapiClient) {
-    vapiClient.stop();
+    try { vapiClient.stop(); } catch { /* already gone */ }
+    vapiClient = null;
+    resetWebCallUi();
     return;
   }
   btn.disabled = true;
   try {
-    const cfg = await api("/calls/dial-config");
-    if (!vapiClient) {
-      const mod = await import("https://esm.sh/@vapi-ai/web");
-      const Vapi = mod.default;
-      vapiClient = new Vapi(cfg.public_key);
-      vapiClient.on("call-end", () => {
-        webCallActive = false;
-        btn.textContent = "Call from this browser";
-        btn.disabled = false;
-        toast("Browser call ended.");
-        refresh();
-      });
-      vapiClient.on("error", (err) => {
-        webCallActive = false;
-        btn.textContent = "Call from this browser";
-        btn.disabled = false;
-        $("dial-error").textContent = err?.message || "Browser call failed.";
-      });
+    // Ask for the mic in the click handler so Chrome treats this as a user gesture.
+    // Stop the preview tracks so Daily can open the mic itself.
+    const preview = await navigator.mediaDevices.getUserMedia({ audio: true });
+    preview.getTracks().forEach((t) => t.stop());
+
+    const Vapi = await loadVapiSdk();
+    const cfg = await ensureDialConfig();
+    if (vapiClient) {
+      try { vapiClient.stop(); } catch { /* stale instance */ }
+      vapiClient = null;
     }
-    await vapiClient.start(cfg.assistant_id);
+    vapiClient = bindVapiClient(new Vapi(cfg.public_key));
+    const call = await vapiClient.start(cfg.assistant_id);
+    if (!call) {
+      throw new Error("Vapi did not start the call. Refresh and try once more.");
+    }
     webCallActive = true;
     btn.textContent = "End browser call";
     const logged = await api("/calls/web", { method: "POST" });
     latestOutbound = logged;
     renderLatestOutbound();
-    toast("Robin is on the line in this browser. Allow microphone access.");
+    toast("Robin is on the line. Speak when she greets you.");
   } catch (err) {
-    $("dial-error").textContent = err.message;
-    toast(err.message);
+    vapiClient = null;
+    resetWebCallUi(err.name === "NotAllowedError"
+      ? "Microphone permission is required for a browser call."
+      : vapiErrorText(err));
   } finally {
-    if (!webCallActive) btn.disabled = false;
-    else btn.disabled = false;
+    btn.disabled = false;
   }
 });
 
@@ -796,6 +867,8 @@ document.querySelectorAll(".finder input").forEach((el) =>
     showApp(me.username);
     await refresh();
     setInterval(refresh, 15000);
+    loadVapiSdk().catch(() => {});
+    ensureDialConfig().catch(() => {});
   } catch {
     showLogin();
   }

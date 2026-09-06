@@ -154,3 +154,9 @@ def get_stats(db: Session = Depends(get_db), _: str = Depends(require_login)):
 @app.get("/", include_in_schema=False)
 def dashboard():
     return FileResponse(STATIC_DIR / "dashboard.html")
+
+
+@app.get("/daily-shim.js", include_in_schema=False)
+def daily_shim():
+    """ESM shim so the Vapi web SDK uses the official Daily IIFE, not a CDN rewrite."""
+    return FileResponse(STATIC_DIR / "daily-shim.js", media_type="text/javascript")
