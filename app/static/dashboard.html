@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Northgate intake</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink:      #12181f;
+    --ink-soft: #55625e;
+    --paper:    #f2f4f2;
+    --surface:  #ffffff;
+    --rule:     #d7dedb;
+    --signal:   #0b6e5f;
+    --signal-soft: #e4f3ef;
+    --alert:    #9c3b1b;
+    --warn:     #8a5a12;
+    --sans: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+
+  .shell { max-width: 1220px; margin: 0 auto; padding: 32px 24px 80px; }
+
+  header {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    gap: 16px; border-bottom: 2px solid var(--ink); padding-bottom: 18px;
+    flex-wrap: wrap;
+  }
+  h1 { font-size: 27px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.015em; }
+  .sub { color: var(--ink-soft); margin: 0; max-width: 62ch; }
+  .whoami { color: var(--ink-soft); font-size: 13.5px; text-align: right; }
+  .whoami b { color: var(--ink); }
+
+  .tallies { display: flex; gap: 28px; margin: 22px 0 0; flex-wrap: wrap; }
+  .tally b {
+    display: block; font-size: 28px; font-weight: 700;
+    font-variant-numeric: tabular-nums; line-height: 1.1;
+  }
+  .tally span { color: var(--ink-soft); font-size: 13.5px; }
+
+  .tabs {
+    display: flex; gap: 4px; margin: 22px 0 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .tabs button {
+    background: transparent; color: var(--ink-soft); border: none;
+    border-bottom: 2px solid transparent; border-radius: 0;
+    padding: 10px 14px; font-weight: 500;
+  }
+  .tabs button[aria-selected="true"] {
+    color: var(--ink); border-bottom-color: var(--ink);
+  }
+  .panel { display: none; padding-top: 20px; }
+  .panel.active { display: block; }
+
+  .finder, .call-form {
+    display: flex; gap: 10px; flex-wrap: wrap;
+    margin: 0 0 14px; align-items: flex-end;
+  }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field.grow { flex: 1; min-width: 220px; }
+  .field label { font-size: 13px; color: var(--ink-soft); }
+  input, select, textarea {
+    font: inherit; padding: 8px 10px; min-width: 172px;
+    border: 1px solid var(--rule); border-radius: 3px;
+    background: var(--surface); color: var(--ink);
+  }
+  select { min-width: 220px; }
+  input:focus-visible, button:focus-visible, tr:focus-visible, select:focus-visible {
+    outline: 2px solid var(--signal); outline-offset: 2px;
+  }
+  button {
+    font: inherit; font-weight: 500; padding: 9px 16px; cursor: pointer;
+    border-radius: 3px; border: 1px solid var(--ink);
+    background: var(--ink); color: var(--paper);
+  }
+  button.quiet { background: transparent; color: var(--ink); border-color: var(--rule); }
+  button.danger { border-color: var(--alert); color: var(--alert); background: transparent; }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+
+  .ledger { background: var(--surface); border: 1px solid var(--rule); border-radius: 3px; }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    text-align: left; font-size: 13px; font-weight: 500; color: var(--ink-soft);
+    padding: 11px 14px; border-bottom: 1px solid var(--rule); white-space: nowrap;
+  }
+  td { padding: 12px 14px; border-bottom: 1px solid var(--rule); vertical-align: baseline; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover, tbody tr[aria-selected="true"] { background: #f0f5f3; }
+  .who { font-weight: 500; }
+  .num { font-variant-numeric: tabular-nums; }
+  .muted { color: var(--ink-soft); font-size: 13px; }
+  .origin b { display: block; font-weight: 500; }
+  .origin.voice b { color: var(--signal); }
+  .origin.api b { color: var(--ink-soft); }
+
+  .chip {
+    display: inline-block; font-size: 12px; font-weight: 600;
+    padding: 2px 8px; border-radius: 999px; background: #ecefed;
+  }
+  .chip.out { background: var(--signal-soft); color: var(--signal); }
+  .chip.in { background: #eef1f4; color: #3d4a55; }
+  .chip.live { background: #fff3d6; color: var(--warn); }
+  .chip.ok { background: var(--signal-soft); color: var(--signal); }
+  .chip.fail { background: #f8e8e3; color: var(--alert); }
+
+  .filters { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .filters button { background: transparent; color: var(--ink); border-color: var(--rule); }
+  .filters button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+  .empty { padding: 56px 24px; text-align: center; color: var(--ink-soft); }
+  .empty strong { display: block; color: var(--ink); font-size: 17px; margin-bottom: 6px; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 4px;
+    padding: 20px 22px;
+  }
+  .call-grid { display: grid; grid-template-columns: 1.1fr .9fr; gap: 18px; }
+  .hint { color: var(--ink-soft); font-size: 13.5px; margin: 0 0 16px; }
+
+  dialog {
+    border: 1px solid var(--rule); border-radius: 4px; padding: 0;
+    width: min(640px, calc(100vw - 32px)); color: var(--ink);
+    box-shadow: 0 18px 44px rgba(18, 24, 31, .22);
+  }
+  dialog::backdrop { background: rgba(18, 24, 31, .42); }
+  .rec-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 16px; padding: 20px 22px; border-bottom: 1px solid var(--rule);
+  }
+  .rec-head h2 { margin: 0; font-size: 21px; }
+  .rec-head p { margin: 2px 0 0; color: var(--ink-soft); font-size: 13.5px; }
+  .rec-body { padding: 6px 22px 20px; }
+  .row { display: grid; grid-template-columns: 158px 1fr; gap: 12px; padding: 9px 0;
+         border-bottom: 1px solid #eef1f0; }
+  .row:last-child { border-bottom: none; }
+  .row dt { color: var(--ink-soft); font-size: 13.5px; }
+  .row dd { margin: 0; white-space: pre-wrap; }
+  .row dd.none { color: #9aa6a2; }
+  .rec-foot { display: flex; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--rule); }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+    background: var(--ink); color: var(--paper); padding: 11px 18px;
+    border-radius: 3px; font-size: 14px; z-index: 20;
+  }
+  .toast[hidden] { display: none; }
+
+  #login-screen {
+    min-height: 100vh; display: grid; place-items: center; padding: 24px;
+  }
+  #login-screen[hidden],
+  #app-screen[hidden] { display: none !important; }
+  .login-card { width: min(420px, 100%); }
+  .login-card h1 { margin-bottom: 6px; }
+  .login-card form { display: flex; flex-direction: column; gap: 12px; margin-top: 18px; }
+  .login-card .field input { min-width: 0; width: 100%; }
+  .login-error { color: var(--alert); font-size: 14px; min-height: 1.2em; }
+
+  @media (max-width: 860px) {
+    .hide-sm { display: none; }
+    .call-grid { grid-template-columns: 1fr; }
+    .shell { padding: 24px 16px 60px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+
+<section id="login-screen">
+  <div class="login-card card">
+    <h1>Northgate intake</h1>
+    <p class="sub">Sign in to place calls and review the patient register.</p>
+    <form id="login-form">
+      <div class="field">
+        <label for="login-user">Username</label>
+        <input id="login-user" name="username" autocomplete="username" required>
+      </div>
+      <div class="field">
+        <label for="login-pass">Password</label>
+        <input id="login-pass" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <p class="login-error" id="login-error"></p>
+      <button type="submit" id="login-btn">Sign in</button>
+    </form>
+  </div>
+</section>
+
+<div class="shell" id="app-screen" hidden>
+
+  <header>
+    <div>
+      <h1>Patient register</h1>
+      <p class="sub">Records from inbound and outbound calls, plus anyone posted to the API.</p>
+    </div>
+    <div class="whoami">
+      Signed in as <b id="signed-in-as"></b><br>
+      <button class="quiet" id="logout" style="margin-top:8px">Sign out</button>
+    </div>
+  </header>
+
+  <div class="tallies">
+    <div class="tally"><b id="t-patients">—</b><span>patients registered</span></div>
+    <div class="tally"><b id="t-outbound">—</b><span>outbound calls</span></div>
+    <div class="tally"><b id="t-inbound">—</b><span>inbound calls</span></div>
+    <div class="tally"><b id="t-talk">—</b><span>total talk time</span></div>
+    <div class="tally"><b id="t-avg">—</b><span>average duration</span></div>
+  </div>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tab-patients" aria-selected="true" data-tab="patients">Patients</button>
+    <button role="tab" id="tab-call" aria-selected="false" data-tab="call">Place a call</button>
+    <button role="tab" id="tab-log" aria-selected="false" data-tab="log">Call log</button>
+  </nav>
+
+  <section class="panel active" id="panel-patients" role="tabpanel">
+    <div class="finder">
+      <div class="field">
+        <label for="f-last">Last name</label>
+        <input id="f-last" placeholder="Davis" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="f-phone">Phone</label>
+        <input id="f-phone" placeholder="415-555-0199" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="f-dob">Date of birth</label>
+        <input id="f-dob" placeholder="03/14/1985" autocomplete="off">
+      </div>
+      <button id="search">Search</button>
+      <button id="clear" class="quiet">Show all</button>
+    </div>
+    <div class="ledger">
+      <table>
+        <thead>
+          <tr>
+            <th>Patient</th>
+            <th>Born</th>
+            <th>Sex</th>
+            <th class="hide-sm">Phone</th>
+            <th class="hide-sm">Location</th>
+            <th class="hide-sm">Insurance</th>
+            <th class="hide-sm">Language</th>
+            <th class="hide-sm">Registered</th>
+          </tr>
+        </thead>
+        <tbody id="patient-rows"></tbody>
+      </table>
+      <div class="empty" id="patient-empty" hidden></div>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-call" role="tabpanel">
+    <div class="call-grid">
+      <div class="card">
+        <h2 style="margin:0 0 6px;font-size:20px">Call a number</h2>
+        <p class="hint">Robin dials from +1 (516) 583-1185. Vapi-bought numbers have a daily outbound limit — if that fails, use a browser call or have someone dial in.</p>
+        <form id="dial-form" class="call-form" style="flex-direction:column;align-items:stretch">
+          <div class="field">
+            <label for="dial-patient">Existing patient (optional)</label>
+            <select id="dial-patient">
+              <option value="">Enter a number below…</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="dial-phone">Phone number</label>
+            <input id="dial-phone" placeholder="516-555-0199" required>
+          </div>
+          <div class="field">
+            <label for="dial-name">Name on the call (optional)</label>
+            <input id="dial-name" placeholder="Maria Alvarez">
+          </div>
+          <p class="login-error" id="dial-error"></p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button type="submit" id="dial-btn">Place phone call</button>
+            <button type="button" class="quiet" id="web-call-btn">Call from this browser</button>
+          </div>
+        </form>
+      </div>
+      <div class="card">
+        <h2 style="margin:0 0 6px;font-size:20px">Latest outbound</h2>
+        <p class="hint">Updates as Vapi reports status. Full history is on the Call log tab.</p>
+        <dl id="latest-outbound">
+          <div class="row"><dt>Status</dt><dd class="none">No outbound call yet.</dd></div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-log" role="tabpanel">
+    <div class="filters">
+      <button type="button" aria-pressed="true" data-direction="">All calls</button>
+      <button type="button" aria-pressed="false" data-direction="outbound">Who we called</button>
+      <button type="button" aria-pressed="false" data-direction="inbound">Who called us</button>
+    </div>
+    <div class="ledger">
+      <table>
+        <thead>
+          <tr>
+            <th>Who</th>
+            <th>Direction</th>
+            <th>Duration</th>
+            <th>Status</th>
+            <th class="hide-sm">When</th>
+            <th class="hide-sm">Ended</th>
+          </tr>
+        </thead>
+        <tbody id="call-rows"></tbody>
+      </table>
+      <div class="empty" id="call-empty" hidden></div>
+    </div>
+  </section>
+</div>
+
+<dialog id="record">
+  <div class="rec-head">
+    <div>
+      <h2 id="r-name"></h2>
+      <p id="r-meta"></p>
+    </div>
+    <button class="quiet" id="r-close">Close</button>
+  </div>
+  <div class="rec-body"><dl id="r-fields"></dl></div>
+  <div class="rec-foot" id="r-foot"></div>
+</dialog>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let currentPatient = null;
+let currentCall = null;
+let callFilter = "";
+let patientsCache = [];
+let latestOutbound = null;
+
+const PATIENT_FIELDS = [
+  ["date_of_birth", "Date of birth"],
+  ["sex", "Sex"],
+  ["phone_number", "Phone"],
+  ["email", "Email"],
+  ["address_line_1", "Address"],
+  ["address_line_2", "Address line 2"],
+  ["city", "City"],
+  ["state", "State"],
+  ["zip_code", "ZIP"],
+  ["insurance_provider", "Insurance"],
+  ["insurance_member_id", "Member ID"],
+  ["preferred_language", "Language"],
+  ["emergency_contact_name", "Emergency contact"],
+  ["emergency_contact_phone", "Emergency phone"],
+  ["source", "Collected via"],
+  ["patient_id", "Record ID"],
+];
+
+const fmtPhone = (p) => p && String(p).length === 10 ? `(${p.slice(0,3)}) ${p.slice(3,6)}-${p.slice(6)}` : (p || "");
+const fmtDate = (iso) => {
+  if (!iso) return "";
+  const [y, m, d] = String(iso).split("-");
+  return y && m && d ? `${m}/${d}/${y}` : iso;
+};
+const fmtWhen = (ts) => ts ? new Date(ts).toLocaleString(undefined, {
+  month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit"
+}) : "";
+const fmtDuration = (sec) => {
+  if (sec == null || sec === "") return "—";
+  const n = Number(sec);
+  if (Number.isNaN(n)) return "—";
+  const m = Math.floor(n / 60);
+  const s = n % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+};
+
+function toast(text) {
+  const el = $("toast");
+  el.textContent = text;
+  el.hidden = false;
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => { el.hidden = true; }, 3200);
+}
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+async function api(path, options = {}) {
+  const res = await fetch(path, { credentials: "same-origin", ...options });
+  const body = await res.json().catch(() => ({ error: { message: "Unreadable response." } }));
+  if (res.status === 401 && path !== "/auth/me" && path !== "/auth/login") {
+    showLogin();
+    throw new Error(body?.error?.message || "Sign in required.");
+  }
+  if (!res.ok) throw new Error(body?.error?.message || `Request failed (${res.status}).`);
+  return body.data;
+}
+
+function showLogin() {
+  $("login-screen").hidden = false;
+  $("app-screen").hidden = true;
+  document.body.classList.remove("signed-in");
+}
+
+function showApp(username) {
+  $("login-screen").hidden = true;
+  $("app-screen").hidden = false;
+  document.body.classList.add("signed-in");
+  $("signed-in-as").textContent = username;
+}
+
+function setTab(name) {
+  document.querySelectorAll(".tabs [role=tab]").forEach((btn) => {
+    btn.setAttribute("aria-selected", btn.dataset.tab === name ? "true" : "false");
+  });
+  document.querySelectorAll(".panel").forEach((panel) => {
+    panel.classList.toggle("active", panel.id === `panel-${name}`);
+  });
+}
+
+async function loadStats() {
+  try {
+    const s = await api("/stats");
+    $("t-patients").textContent = s.patients;
+    $("t-outbound").textContent = s.outbound_calls ?? 0;
+    $("t-inbound").textContent = s.inbound_calls ?? 0;
+    $("t-talk").textContent = fmtDuration(s.total_duration_seconds);
+    $("t-avg").textContent = fmtDuration(s.average_duration_seconds);
+  } catch { /* tallies stay dashed */ }
+}
+
+function fillPatientSelect(patients) {
+  const sel = $("dial-patient");
+  const current = sel.value;
+  sel.innerHTML = `<option value="">Enter a number below…</option>` +
+    patients.map((p) =>
+      `<option value="${esc(p.phone_number)}" data-name="${esc(p.first_name)} ${esc(p.last_name)}">
+        ${esc(p.first_name)} ${esc(p.last_name)} · ${esc(fmtPhone(p.phone_number))}
+      </option>`
+    ).join("");
+  sel.value = current;
+}
+
+async function loadPatients() {
+  const params = new URLSearchParams();
+  const last = $("f-last").value.trim();
+  const phone = $("f-phone").value.trim();
+  const dob = $("f-dob").value.trim();
+  if (last) params.set("last_name", last);
+  if (phone) params.set("phone_number", phone);
+  if (dob) params.set("date_of_birth", dob);
+
+  const tbody = $("patient-rows"), empty = $("patient-empty");
+  try {
+    const patients = await api("/patients?" + params.toString());
+    patientsCache = patients;
+    fillPatientSelect(patients);
+    tbody.innerHTML = "";
+    if (!patients.length) {
+      empty.hidden = false;
+      empty.innerHTML = (last || phone || dob)
+        ? "<strong>No matching records</strong>Adjust the search or show all registrations."
+        : "<strong>No patients yet</strong>Place a call or have someone dial the intake line.";
+      return;
+    }
+    empty.hidden = true;
+    for (const p of patients) {
+      const tr = document.createElement("tr");
+      tr.tabIndex = 0;
+      tr.innerHTML = `
+        <td class="who">${esc(p.first_name)} ${esc(p.last_name)}
+          <div class="muted">${p.email ? esc(p.email) : "No email"}</div></td>
+        <td class="num">${fmtDate(p.date_of_birth)}</td>
+        <td>${esc(p.sex)}</td>
+        <td class="num hide-sm">${fmtPhone(p.phone_number)}</td>
+        <td class="hide-sm">${esc(p.city)}, ${esc(p.state)} ${esc(p.zip_code)}</td>
+        <td class="hide-sm">${p.insurance_provider ? esc(p.insurance_provider) : "<span class='muted'>None</span>"}</td>
+        <td class="hide-sm">${esc(p.preferred_language || "English")}</td>
+        <td class="hide-sm origin ${p.source === "voice" ? "voice" : "api"}">
+          <b>${p.source === "voice" ? "By phone" : p.source === "seed" ? "Seed" : "Via API"}</b>
+          <span class="muted">${fmtWhen(p.created_at)}</span>
+        </td>`;
+      const open = () => openPatient(p, tr);
+      tr.addEventListener("click", open);
+      tr.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
+      });
+      tbody.appendChild(tr);
+    }
+  } catch (err) {
+    tbody.innerHTML = "";
+    empty.hidden = false;
+    empty.innerHTML = `<strong>Could not load the register</strong>${esc(err.message)}`;
+  }
+}
+
+function callWho(c) {
+  if (c.patient_name) return c.patient_name;
+  if (c.customer_name) return c.customer_name;
+  return fmtPhone(c.caller_number) || "Unknown number";
+}
+
+function statusChip(status) {
+  const s = (status || "ended").toLowerCase();
+  const live = ["queued", "ringing", "in-progress", "forwarding"].includes(s);
+  const fail = ["failed", "not-found"].includes(s);
+  const cls = live ? "live" : fail ? "fail" : "ok";
+  return `<span class="chip ${cls}">${esc(status || "ended")}</span>`;
+}
+
+async function loadCalls() {
+  const tbody = $("call-rows"), empty = $("call-empty");
+  const qs = callFilter ? `?direction=${encodeURIComponent(callFilter)}` : "";
+  try {
+    const calls = await api("/calls" + qs);
+    const outbound = calls.filter((c) => c.direction === "outbound");
+    if (outbound[0]) latestOutbound = outbound[0];
+    renderLatestOutbound();
+    tbody.innerHTML = "";
+    if (!calls.length) {
+      empty.hidden = false;
+      empty.innerHTML = callFilter === "outbound"
+        ? "<strong>No outbound calls yet</strong>Use Place a call to dial someone."
+        : "<strong>No calls logged</strong>Inbound and outbound conversations will appear here.";
+      return;
+    }
+    empty.hidden = true;
+    for (const c of calls) {
+      const tr = document.createElement("tr");
+      tr.tabIndex = 0;
+      tr.innerHTML = `
+        <td class="who">${esc(callWho(c))}
+          <div class="muted">${esc(fmtPhone(c.caller_number))}</div></td>
+        <td><span class="chip ${c.direction === "outbound" ? "out" : "in"}">${c.direction === "outbound" ? "Outbound" : "Inbound"}</span></td>
+        <td class="num">${fmtDuration(c.duration_seconds)}</td>
+        <td>${statusChip(c.status)}</td>
+        <td class="hide-sm muted">${esc(fmtWhen(c.created_at))}</td>
+        <td class="hide-sm muted">${esc(c.ended_reason || "—")}</td>`;
+      const open = () => openCall(c, tr);
+      tr.addEventListener("click", open);
+      tr.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
+      });
+      tbody.appendChild(tr);
+    }
+  } catch (err) {
+    tbody.innerHTML = "";
+    empty.hidden = false;
+    empty.innerHTML = `<strong>Could not load calls</strong>${esc(err.message)}`;
+  }
+}
+
+function renderLatestOutbound() {
+  const el = $("latest-outbound");
+  const c = latestOutbound;
+  if (!c) {
+    el.innerHTML = `<div class="row"><dt>Status</dt><dd class="none">No outbound call yet.</dd></div>`;
+    return;
+  }
+  el.innerHTML = [
+    ["Who", callWho(c)],
+    ["Number", fmtPhone(c.caller_number)],
+    ["Status", c.status || "queued"],
+    ["Duration", fmtDuration(c.duration_seconds)],
+    ["Started", fmtWhen(c.created_at)],
+    ["Ended reason", c.ended_reason || "—"],
+  ].map(([k, v]) => `<div class="row"><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("");
+}
+
+function openPatient(p, tr) {
+  currentPatient = p;
+  currentCall = null;
+  document.querySelectorAll("tbody tr").forEach(r => r.removeAttribute("aria-selected"));
+  tr.setAttribute("aria-selected", "true");
+  $("r-name").textContent = `${p.first_name} ${p.last_name}`;
+  $("r-meta").textContent = p.created_at === p.updated_at
+    ? `Registered ${fmtWhen(p.created_at)}`
+    : `Registered ${fmtWhen(p.created_at)}, last updated ${fmtWhen(p.updated_at)}`;
+  $("r-fields").innerHTML = PATIENT_FIELDS.map(([key, label]) => {
+    let value = p[key];
+    if (key === "date_of_birth") value = fmtDate(value);
+    if (key.includes("phone")) value = fmtPhone(value);
+    if (key === "source") value = value === "voice" ? "Phone call" : value === "seed" ? "Seed data" : "REST API";
+    const blank = value === null || value === undefined || value === "";
+    return `<div class="row"><dt>${label}</dt>
+            <dd class="${blank ? "none" : ""}">${blank ? "Not provided" : esc(value)}</dd></div>`;
+  }).join("");
+  $("r-foot").innerHTML = `
+    <button class="quiet" id="r-call">Call this patient</button>
+    <button class="quiet danger" id="r-delete">Remove from register</button>`;
+  $("r-call").onclick = () => {
+    $("record").close();
+    $("dial-phone").value = p.phone_number;
+    $("dial-name").value = `${p.first_name} ${p.last_name}`;
+    $("dial-patient").value = p.phone_number;
+    setTab("call");
+  };
+  $("r-delete").onclick = deleteCurrentPatient;
+  $("record").showModal();
+}
+
+function openCall(c, tr) {
+  currentCall = c;
+  currentPatient = null;
+  document.querySelectorAll("tbody tr").forEach(r => r.removeAttribute("aria-selected"));
+  tr.setAttribute("aria-selected", "true");
+  $("r-name").textContent = callWho(c);
+  $("r-meta").textContent = `${c.direction === "outbound" ? "Outbound" : "Inbound"} · ${fmtDuration(c.duration_seconds)}`;
+  const rows = [
+    ["Number", fmtPhone(c.caller_number)],
+    ["Direction", c.direction === "outbound" ? "We called them" : "They called us"],
+    ["Duration", fmtDuration(c.duration_seconds)],
+    ["Status", c.status || "ended"],
+    ["Ended reason", c.ended_reason],
+    ["When", fmtWhen(c.created_at)],
+    ["Patient", c.patient_name],
+    ["Call ID", c.call_id],
+    ["Summary", c.summary],
+    ["Transcript", c.transcript],
+  ];
+  $("r-fields").innerHTML = rows.map(([label, value]) => {
+    const blank = value === null || value === undefined || value === "";
+    return `<div class="row"><dt>${label}</dt>
+            <dd class="${blank ? "none" : ""}">${blank ? "Not provided" : esc(value)}</dd></div>`;
+  }).join("");
+  $("r-foot").innerHTML = "";
+  $("record").showModal();
+}
+
+async function deleteCurrentPatient() {
+  if (!currentPatient) return;
+  if (!confirm(`Remove ${currentPatient.first_name} ${currentPatient.last_name} from the register? The record is kept but hidden.`)) return;
+  try {
+    await api(`/patients/${currentPatient.patient_id}`, { method: "DELETE" });
+    $("record").close();
+    toast(`${currentPatient.first_name} ${currentPatient.last_name} removed from the register.`);
+    refresh();
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+async function refresh() {
+  await Promise.all([loadStats(), loadPatients(), loadCalls()]);
+}
+
+$("login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("login-error").textContent = "";
+  $("login-btn").disabled = true;
+  try {
+    const data = await api("/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        username: $("login-user").value,
+        password: $("login-pass").value,
+      }),
+    });
+    showApp(data.username);
+    await refresh();
+  } catch (err) {
+    $("login-error").textContent = err.message;
+  } finally {
+    $("login-btn").disabled = false;
+  }
+});
+
+$("logout").addEventListener("click", async () => {
+  await api("/auth/logout", { method: "POST" });
+  showLogin();
+});
+
+document.querySelectorAll(".tabs [role=tab]").forEach((btn) => {
+  btn.addEventListener("click", () => setTab(btn.dataset.tab));
+});
+
+document.querySelectorAll(".filters button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    callFilter = btn.dataset.direction;
+    document.querySelectorAll(".filters button").forEach((b) => {
+      b.setAttribute("aria-pressed", b === btn ? "true" : "false");
+    });
+    loadCalls();
+  });
+});
+
+$("dial-patient").addEventListener("change", () => {
+  const opt = $("dial-patient").selectedOptions[0];
+  if (!opt || !opt.value) return;
+  $("dial-phone").value = opt.value;
+  $("dial-name").value = opt.dataset.name || "";
+});
+
+$("dial-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("dial-error").textContent = "";
+  $("dial-btn").disabled = true;
+  try {
+    const data = await api("/calls/outbound", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        phone_number: $("dial-phone").value,
+        customer_name: $("dial-name").value || null,
+      }),
+    });
+    latestOutbound = data;
+    renderLatestOutbound();
+    toast(`Calling ${fmtPhone(data.caller_number)}…`);
+    setTab("log");
+    await refresh();
+  } catch (err) {
+    $("dial-error").textContent = err.message;
+    toast(err.message);
+  } finally {
+    $("dial-btn").disabled = false;
+  }
+});
+
+let vapiClient = null;
+let webCallActive = false;
+
+$("web-call-btn").addEventListener("click", async () => {
+  $("dial-error").textContent = "";
+  const btn = $("web-call-btn");
+  if (webCallActive && vapiClient) {
+    vapiClient.stop();
+    return;
+  }
+  btn.disabled = true;
+  try {
+    const cfg = await api("/calls/dial-config");
+    if (!vapiClient) {
+      const mod = await import("https://esm.sh/@vapi-ai/web");
+      const Vapi = mod.default;
+      vapiClient = new Vapi(cfg.public_key);
+      vapiClient.on("call-end", () => {
+        webCallActive = false;
+        btn.textContent = "Call from this browser";
+        btn.disabled = false;
+        toast("Browser call ended.");
+        refresh();
+      });
+      vapiClient.on("error", (err) => {
+        webCallActive = false;
+        btn.textContent = "Call from this browser";
+        btn.disabled = false;
+        $("dial-error").textContent = err?.message || "Browser call failed.";
+      });
+    }
+    await vapiClient.start(cfg.assistant_id);
+    webCallActive = true;
+    btn.textContent = "End browser call";
+    const logged = await api("/calls/web", { method: "POST" });
+    latestOutbound = logged;
+    renderLatestOutbound();
+    toast("Robin is on the line in this browser. Allow microphone access.");
+  } catch (err) {
+    $("dial-error").textContent = err.message;
+    toast(err.message);
+  } finally {
+    if (!webCallActive) btn.disabled = false;
+    else btn.disabled = false;
+  }
+});
+
+$("r-close").addEventListener("click", () => $("record").close());
+$("search").addEventListener("click", loadPatients);
+$("clear").addEventListener("click", () => {
+  $("f-last").value = $("f-phone").value = $("f-dob").value = "";
+  loadPatients();
+});
+document.querySelectorAll(".finder input").forEach((el) =>
+  el.addEventListener("keydown", (e) => { if (e.key === "Enter") loadPatients(); }));
+
+(async function boot() {
+  try {
+    const me = await api("/auth/me");
+    showApp(me.username);
+    await refresh();
+    setInterval(refresh, 15000);
+  } catch {
+    showLogin();
+  }
+})();
+</script>
+</body>
+</html>
