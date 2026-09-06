@@ -204,6 +204,7 @@ class PatientBase(BaseModel):
     preferred_language: Annotated[str, Field(max_length=50)] = "English"
     emergency_contact_name: Annotated[str, Field(max_length=120)] | None = None
     emergency_contact_phone: str | None = None
+    next_appointment: Annotated[str, Field(max_length=120)] | None = None
 
     @field_validator("first_name", "last_name")
     @classmethod
@@ -239,7 +240,7 @@ class PatientBase(BaseModel):
 
     @field_validator(
         "email", "address_line_2", "insurance_provider", "insurance_member_id",
-        "emergency_contact_name", mode="before",
+        "emergency_contact_name", "next_appointment", mode="before",
     )
     @classmethod
     def _blank_to_none(cls, v: Any) -> Any:
@@ -281,6 +282,7 @@ class PatientUpdate(BaseModel):
     preferred_language: str | None = None
     emergency_contact_name: str | None = None
     emergency_contact_phone: str | None = None
+    next_appointment: str | None = None
 
     @field_validator("first_name", "last_name")
     @classmethod
@@ -333,6 +335,7 @@ class PatientOut(BaseModel):
     preferred_language: str
     emergency_contact_name: str | None
     emergency_contact_phone: str | None
+    next_appointment: str | None = None
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None

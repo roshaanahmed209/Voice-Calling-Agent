@@ -131,11 +131,13 @@ def test_partial_update():
         phone_number="4155550146")).json()["data"]
 
     res = client.put(f"/patients/{created['patient_id']}",
-                     json={"city": "Emeryville", "insurance_provider": "Aetna"})
+                     json={"city": "Emeryville", "insurance_provider": "Aetna",
+                           "next_appointment": "Tuesday at 10:00 AM"})
     assert res.status_code == 200
     data = res.json()["data"]
     assert data["city"] == "Emeryville"
     assert data["insurance_provider"] == "Aetna"
+    assert data["next_appointment"] == "Tuesday at 10:00 AM"
     assert data["last_name"] == "Doe"  # untouched fields survive
 
 

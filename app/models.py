@@ -59,6 +59,7 @@ class Patient(Base):
     preferred_language: Mapped[str] = mapped_column(String(50), default="English")
     emergency_contact_name: Mapped[str | None] = mapped_column(String(120))
     emergency_contact_phone: Mapped[str | None] = mapped_column(String(10))
+    next_appointment: Mapped[str | None] = mapped_column(String(120))
 
     # --- Bookkeeping -------------------------------------------------------
     created_at: Mapped[datetime] = mapped_column(

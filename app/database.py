@@ -51,30 +51,36 @@ def init_db() -> None:
     from app import models  # noqa: F401  (registers the mappers)
 
     Base.metadata.create_all(bind=engine)
-    _add_missing_call_columns()
+    _add_missing_columns()
 
 
-def _add_missing_call_columns() -> None:
+def _add_missing_columns() -> None:
     """SQLite create_all will not add columns to an existing table."""
     from sqlalchemy import inspect, text
 
     inspector = inspect(engine)
-    if "call_transcripts" not in inspector.get_table_names():
-        return
-    existing = {col["name"] for col in inspector.get_columns("call_transcripts")}
+    tables = inspector.get_table_names()
     statements = []
-    if "direction" not in existing:
-        statements.append(
-            "ALTER TABLE call_transcripts ADD COLUMN direction VARCHAR(20) DEFAULT 'inbound'"
-        )
-    if "status" not in existing:
-        statements.append(
-            "ALTER TABLE call_transcripts ADD COLUMN status VARCHAR(20) DEFAULT 'ended'"
-        )
-    if "customer_name" not in existing:
-        statements.append(
-            "ALTER TABLE call_transcripts ADD COLUMN customer_name VARCHAR(120)"
-        )
+    if "call_transcripts" in tables:
+        existing = {col["name"] for col in inspector.get_columns("call_transcripts")}
+        if "direction" not in existing:
+            statements.append(
+                "ALTER TABLE call_transcripts ADD COLUMN direction VARCHAR(20) DEFAULT 'inbound'"
+            )
+        if "status" not in existing:
+            statements.append(
+                "ALTER TABLE call_transcripts ADD COLUMN status VARCHAR(20) DEFAULT 'ended'"
+            )
+        if "customer_name" not in existing:
+            statements.append(
+                "ALTER TABLE call_transcripts ADD COLUMN customer_name VARCHAR(120)"
+            )
+    if "patients" in tables:
+        patient_cols = {col["name"] for col in inspector.get_columns("patients")}
+        if "next_appointment" not in patient_cols:
+            statements.append(
+                "ALTER TABLE patients ADD COLUMN next_appointment VARCHAR(120)"
+            )
     if not statements:
         return
     with engine.begin() as conn:

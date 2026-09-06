@@ -77,7 +77,8 @@
               "insurance_member_id": { "type": "string", "description": "Optional alphanumeric member ID." },
               "preferred_language": { "type": "string", "description": "Defaults to English." },
               "emergency_contact_name": { "type": "string", "description": "Optional full name." },
-              "emergency_contact_phone": { "type": "string", "description": "Optional 10 digits, no punctuation." }
+              "emergency_contact_phone": { "type": "string", "description": "Optional 10 digits, no punctuation." },
+              "next_appointment": { "type": "string", "description": "Optional spoken appointment slot if they booked one during the call." }
             },
             "required": [
               "first_name", "last_name", "date_of_birth", "sex",
@@ -115,7 +116,8 @@
               "insurance_member_id": { "type": "string" },
               "preferred_language": { "type": "string" },
               "emergency_contact_name": { "type": "string" },
-              "emergency_contact_phone": { "type": "string" }
+              "emergency_contact_phone": { "type": "string" },
+              "next_appointment": { "type": "string", "description": "Spoken slot the caller booked, e.g. Tuesday at 10:00 AM." }
             },
             "required": ["patient_id"]
           }
