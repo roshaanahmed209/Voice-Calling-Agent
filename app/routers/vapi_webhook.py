@@ -259,8 +259,8 @@ async def vapi_webhook(request: Request, db: Session = Depends(get_db)):
         phone = caller_number(message)
         patient = crud.find_by_phone(db, phone) if phone else None
         call = message.get("call") or {}
-        call_type = str(call.get("type") or "")
-        direction = "outbound" if "outbound" in call_type.lower() else "inbound"
+        call_type = str(call.get("type") or "").lower()
+        direction = "outbound" if ("outbound" in call_type or "web" in call_type) else "inbound"
         crud.save_transcript(
             db,
             call_id=call.get("id"),
@@ -283,7 +283,8 @@ async def vapi_webhook(request: Request, db: Session = Depends(get_db)):
         if not call_id:
             return {"received": True}
         phone = caller_number(message)
-        direction = "outbound" if "outbound" in str(call.get("type") or "").lower() else None
+        call_type = str(call.get("type") or "").lower()
+        direction = "outbound" if ("outbound" in call_type or "web" in call_type) else None
         crud.upsert_call(
             db,
             call_id=call_id,

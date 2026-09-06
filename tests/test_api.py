@@ -255,6 +255,26 @@ def test_health_stays_public():
 # --- Outbound calls --------------------------------------------------------
 
 @patch("app.routers.calls.httpx.Client")
+def test_browser_call_returns_web_url(mock_client_cls):
+    vapi = MagicMock()
+    vapi.post.return_value.status_code = 201
+    vapi.post.return_value.json.return_value = {
+        "id": "call-web-1",
+        "status": "queued",
+        "type": "webCall",
+        "webCallUrl": "https://vapi.daily.co/test-room",
+    }
+    mock_client_cls.return_value.__enter__.return_value = vapi
+
+    res = client.post("/calls/web")
+    assert res.status_code == 201
+    data = res.json()["data"]
+    assert data["web_call_url"] == "https://vapi.daily.co/test-room"
+    assert data["vapi_call_id"] == "call-web-1"
+    assert data["direction"] == "outbound"
+
+
+@patch("app.routers.calls.httpx.Client")
 def test_outbound_call_is_logged(mock_client_cls):
     vapi = MagicMock()
     vapi.post.return_value.status_code = 201

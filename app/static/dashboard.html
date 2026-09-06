@@ -180,13 +180,6 @@
   }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
-<script type="importmap">
-{
-  "imports": {
-    "@daily-co/daily-js": "/daily-shim.js"
-  }
-}
-</script>
 <script src="https://unpkg.com/@daily-co/daily-js@0.87.0/dist/daily.js"></script>
 </head>
 <body>
@@ -299,6 +292,7 @@
             <button type="submit" id="dial-btn">Place phone call</button>
             <button type="button" class="quiet" id="web-call-btn">Call from this browser</button>
           </div>
+          <p class="hint" id="web-call-status" hidden>Connecting to Robin…</p>
         </form>
       </div>
       <div class="card">
@@ -683,8 +677,6 @@ $("login-form").addEventListener("submit", async (e) => {
     });
     showApp(data.username);
     await refresh();
-    loadVapiSdk().catch(() => {});
-    ensureDialConfig().catch(() => {});
   } catch (err) {
     $("login-error").textContent = err.message;
   } finally {
@@ -744,10 +736,26 @@ $("dial-form").addEventListener("submit", async (e) => {
   }
 });
 
-let vapiClient = null;
+let dailyCall = null;
 let webCallActive = false;
-let vapiCtor = null;
-let dialConfig = null;
+let activeVapiCallId = null;
+let endingByUser = false;
+
+function waitForDaily() {
+  return new Promise((resolve, reject) => {
+    if (window.Daily) return resolve(window.Daily);
+    let n = 0;
+    const t = setInterval(() => {
+      if (window.Daily) {
+        clearInterval(t);
+        resolve(window.Daily);
+      } else if (++n > 50) {
+        clearInterval(t);
+        reject(new Error("Daily.js failed to load. Refresh the page and try again."));
+      }
+    }, 100);
+  });
+}
 
 function vapiErrorText(err) {
   if (!err) return "Browser call failed.";
@@ -763,26 +771,29 @@ function vapiErrorText(err) {
   );
 }
 
-async function loadVapiSdk() {
-  if (vapiCtor) return vapiCtor;
-  for (let i = 0; i < 40 && !window.Daily; i++) {
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  if (!window.Daily) {
-    throw new Error("Daily.js failed to load. Refresh the page and try again.");
-  }
-  const mod = await import("https://esm.sh/@vapi-ai/web@2.7.0?external=@daily-co/daily-js");
-  vapiCtor = mod.default?.default || mod.default || mod.Vapi;
-  if (typeof vapiCtor !== "function") {
-    throw new Error("Vapi web SDK did not load correctly.");
-  }
-  return vapiCtor;
+function setWebStatus(text, hidden = false) {
+  const el = $("web-call-status");
+  el.textContent = text;
+  el.hidden = hidden;
 }
 
-async function ensureDialConfig() {
-  if (dialConfig?.public_key && dialConfig?.assistant_id) return dialConfig;
-  dialConfig = await api("/calls/dial-config");
-  return dialConfig;
+async function explainEndedCall(callId) {
+  if (!callId) return "";
+  try {
+    await new Promise((r) => setTimeout(r, 800));
+    const remote = await api(`/calls/vapi/${encodeURIComponent(callId)}`);
+    if (remote.ended_reason) return `Call ended: ${remote.ended_reason}`;
+  } catch { /* keep the Daily message */ }
+  return "";
+}
+
+async function destroyDailyCall() {
+  const call = dailyCall;
+  dailyCall = null;
+  webCallActive = false;
+  if (!call) return;
+  try { await call.leave(); } catch { /* already left */ }
+  try { await call.destroy(); } catch { /* already gone */ }
 }
 
 function resetWebCallUi(message) {
@@ -790,65 +801,80 @@ function resetWebCallUi(message) {
   const btn = $("web-call-btn");
   btn.textContent = "Call from this browser";
   btn.disabled = false;
+  setWebStatus("", true);
   if (message) {
     $("dial-error").textContent = message;
     toast(message);
   }
 }
 
-function bindVapiClient(client) {
-  client.on("call-end", () => {
-    const hadError = Boolean($("dial-error").textContent);
-    resetWebCallUi();
-    if (!hadError) toast("Browser call ended.");
-    refresh();
-  });
-  client.on("error", (err) => {
-    resetWebCallUi(vapiErrorText(err));
-  });
-  return client;
-}
-
 $("web-call-btn").addEventListener("click", async () => {
   $("dial-error").textContent = "";
   const btn = $("web-call-btn");
-  if (webCallActive && vapiClient) {
-    try { vapiClient.stop(); } catch { /* already gone */ }
-    vapiClient = null;
+  if (webCallActive) {
+    endingByUser = true;
+    await destroyDailyCall();
     resetWebCallUi();
+    toast("Browser call ended.");
+    refresh();
     return;
   }
   btn.disabled = true;
+  setWebStatus("Connecting to Robin…");
   try {
-    // Ask for the mic in the click handler so Chrome treats this as a user gesture.
-    // Stop the preview tracks so Daily can open the mic itself.
+    const Daily = await waitForDaily();
     const preview = await navigator.mediaDevices.getUserMedia({ audio: true });
     preview.getTracks().forEach((t) => t.stop());
 
-    const Vapi = await loadVapiSdk();
-    const cfg = await ensureDialConfig();
-    if (vapiClient) {
-      try { vapiClient.stop(); } catch { /* stale instance */ }
-      vapiClient = null;
+    const started = await api("/calls/web", { method: "POST" });
+    if (!started.web_call_url) {
+      throw new Error("Vapi did not return a browser-call URL.");
     }
-    vapiClient = bindVapiClient(new Vapi(cfg.public_key));
-    const call = await vapiClient.start(cfg.assistant_id);
-    if (!call) {
-      throw new Error("Vapi did not start the call. Refresh and try once more.");
-    }
-    webCallActive = true;
-    btn.textContent = "End browser call";
-    const logged = await api("/calls/web", { method: "POST" });
-    latestOutbound = logged;
+    activeVapiCallId = started.vapi_call_id || started.call_id;
+    latestOutbound = started;
     renderLatestOutbound();
-    toast("Robin is on the line. Speak when she greets you.");
+
+    if (dailyCall) await destroyDailyCall();
+    dailyCall = Daily.createCallObject({
+      audioSource: true,
+      videoSource: false,
+      subscribeToTracksAutomatically: true,
+    });
+    dailyCall.on("joined-meeting", () => {
+      webCallActive = true;
+      btn.textContent = "End browser call";
+      btn.disabled = false;
+      setWebStatus("Robin is on the line. Speak after she greets you.");
+      toast("Robin is on the line. Speak after she greets you.");
+    });
+    dailyCall.on("left-meeting", async () => {
+      if (endingByUser) {
+        endingByUser = false;
+        return;
+      }
+      const reason = await explainEndedCall(activeVapiCallId);
+      await destroyDailyCall();
+      resetWebCallUi(reason || undefined);
+      if (!reason) toast("Browser call ended.");
+      refresh();
+    });
+    dailyCall.on("error", async (err) => {
+      if (endingByUser) return;
+      const dailyMsg = vapiErrorText(err);
+      const reason = await explainEndedCall(activeVapiCallId);
+      await destroyDailyCall();
+      resetWebCallUi(reason || dailyMsg);
+      refresh();
+    });
+
+    await dailyCall.join({ url: started.web_call_url });
   } catch (err) {
-    vapiClient = null;
+    await destroyDailyCall();
     resetWebCallUi(err.name === "NotAllowedError"
       ? "Microphone permission is required for a browser call."
       : vapiErrorText(err));
   } finally {
-    btn.disabled = false;
+    if (!webCallActive) btn.disabled = false;
   }
 });
 
@@ -867,8 +893,6 @@ document.querySelectorAll(".finder input").forEach((el) =>
     showApp(me.username);
     await refresh();
     setInterval(refresh, 15000);
-    loadVapiSdk().catch(() => {});
-    ensureDialConfig().catch(() => {});
   } catch {
     showLogin();
   }

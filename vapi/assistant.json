@@ -147,6 +147,7 @@
   "serverMessages": ["tool-calls", "end-of-call-report", "status-update"],
 
   "silenceTimeoutSeconds": 20,
+  "customerJoinTimeoutSeconds": 90,
   "maxDurationSeconds": 900,
   "endCallMessage": "Thanks for calling Northgate Family Health. Take care.",
   "endCallFunctionEnabled": true,
