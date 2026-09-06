@@ -127,10 +127,8 @@
   },
 
   "voice": {
-    "provider": "11labs",
-    "voiceId": "burt",
-    "stability": 0.5,
-    "similarityBoost": 0.75
+    "provider": "openai",
+    "voiceId": "alloy"
   },
 
   "transcriber": {

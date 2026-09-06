@@ -134,6 +134,52 @@
   .call-grid { display: grid; grid-template-columns: 1.1fr .9fr; gap: 18px; }
   .hint { color: var(--ink-soft); font-size: 13.5px; margin: 0 0 16px; }
 
+  #call-screen {
+    position: fixed; inset: 0; z-index: 40;
+    background: #0d1614;
+    color: #eef6f3;
+    display: grid; place-items: center;
+    padding: 32px 20px;
+  }
+  #call-screen[hidden] { display: none !important; }
+  .call-stage { text-align: center; max-width: 360px; }
+  .call-brand { margin: 0 0 28px; letter-spacing: .12em; text-transform: uppercase;
+    font-size: 12px; color: #8aa39b; }
+  .call-avatar {
+    width: 118px; height: 118px; margin: 0 auto 22px;
+    border-radius: 50%; display: grid; place-items: center;
+    font-size: 44px; font-weight: 700; background: #16352e; color: #d7efe8;
+    position: relative;
+  }
+  .call-avatar::before, .call-avatar::after {
+    content: ""; position: absolute; inset: -10px; border-radius: 50%;
+    border: 2px solid rgba(215, 239, 232, .28);
+    animation: ring 1.8s ease-out infinite; pointer-events: none;
+  }
+  .call-avatar::after { animation-delay: .7s; inset: -22px; }
+  .call-avatar[data-state="live"]::before, .call-avatar[data-state="live"]::after {
+    border-color: rgba(11, 110, 95, .45);
+  }
+  .call-avatar[data-state="live"] { background: #0b6e5f; }
+  @keyframes ring {
+    0% { transform: scale(.85); opacity: .7; }
+    100% { transform: scale(1.15); opacity: 0; }
+  }
+  .call-stage h2 { margin: 0 0 6px; font-size: 28px; font-weight: 600; }
+  #call-screen-status { margin: 0; color: #b7c9c3; font-size: 16px; }
+  #call-screen-timer {
+    margin: 10px 0 0; font-variant-numeric: tabular-nums;
+    font-size: 18px; color: #8aa39b; min-height: 1.3em;
+  }
+  #call-screen-timer[hidden] { visibility: hidden; }
+  .hangup {
+    margin-top: 42px; width: 68px; height: 68px; padding: 0;
+    border-radius: 50%; border: none; background: #c13a24; color: #fff;
+    font-size: 13px; font-weight: 600;
+  }
+  .hangup:hover { background: #a42f1d; }
+  .call-start-btn { min-width: 220px; }
+
   dialog {
     border: 1px solid var(--rule); border-radius: 4px; padding: 0;
     width: min(640px, calc(100vw - 32px)); color: var(--ink);
@@ -158,7 +204,7 @@
   .toast {
     position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
     background: var(--ink); color: var(--paper); padding: 11px 18px;
-    border-radius: 3px; font-size: 14px; z-index: 20;
+    border-radius: 3px; font-size: 14px; z-index: 50;
   }
   .toast[hidden] { display: none; }
 
@@ -186,7 +232,7 @@
 <section id="login-screen">
   <div class="login-card card">
     <h1>Northgate intake</h1>
-    <p class="sub">Sign in to place calls and review the patient register.</p>
+    <p class="sub">Sign in to talk to Robin and review the patient register.</p>
     <form id="login-form">
       <div class="field">
         <label for="login-user">Username</label>
@@ -225,7 +271,7 @@
 
   <nav class="tabs" role="tablist">
     <button role="tab" id="tab-patients" aria-selected="true" data-tab="patients">Patients</button>
-    <button role="tab" id="tab-call" aria-selected="false" data-tab="call">Place a call</button>
+    <button role="tab" id="tab-call" aria-selected="false" data-tab="call">Call Robin</button>
     <button role="tab" id="tab-log" aria-selected="false" data-tab="log">Call log</button>
   </nav>
 
@@ -269,36 +315,16 @@
   <section class="panel" id="panel-call" role="tabpanel">
     <div class="call-grid">
       <div class="card">
-        <h2 style="margin:0 0 6px;font-size:20px">Call a number</h2>
-        <p class="hint">Robin dials from +1 (516) 583-1185. Vapi-bought numbers have a daily outbound limit — if that fails, use a browser call or have someone dial in. Browser calls need a microphone; allow it when the browser asks.</p>
-        <form id="dial-form" class="call-form" style="flex-direction:column;align-items:stretch">
-          <div class="field">
-            <label for="dial-patient">Existing patient (optional)</label>
-            <select id="dial-patient">
-              <option value="">Enter a number below…</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="dial-phone">Phone number</label>
-            <input id="dial-phone" placeholder="516-555-0199" required>
-          </div>
-          <div class="field">
-            <label for="dial-name">Name on the call (optional)</label>
-            <input id="dial-name" placeholder="Maria Alvarez">
-          </div>
-          <p class="login-error" id="dial-error"></p>
-          <div style="display:flex;gap:10px;flex-wrap:wrap">
-            <button type="submit" id="dial-btn">Place phone call</button>
-            <button type="button" class="quiet" id="web-call-btn">Call from this browser</button>
-          </div>
-          <p class="hint" id="web-call-status" hidden>Connecting to Robin…</p>
-        </form>
+        <h2 style="margin:0 0 6px;font-size:20px">Talk to Robin</h2>
+        <p class="hint">Robin answers in this browser. Allow the microphone when asked. People can also dial +1 (516) 583-1185.</p>
+        <p class="login-error" id="dial-error"></p>
+        <button type="button" class="call-start-btn" id="web-call-btn">Call from this browser</button>
       </div>
       <div class="card">
-        <h2 style="margin:0 0 6px;font-size:20px">Latest outbound</h2>
+        <h2 style="margin:0 0 6px;font-size:20px">Latest call</h2>
         <p class="hint">Updates as Vapi reports status. Full history is on the Call log tab.</p>
         <dl id="latest-outbound">
-          <div class="row"><dt>Status</dt><dd class="none">No outbound call yet.</dd></div>
+          <div class="row"><dt>Status</dt><dd class="none">No browser call yet.</dd></div>
         </dl>
       </div>
     </div>
@@ -341,6 +367,16 @@
   <div class="rec-foot" id="r-foot"></div>
 </dialog>
 
+<div id="call-screen" hidden>
+  <div class="call-stage">
+    <p class="call-brand">Northgate Family Health</p>
+    <div class="call-avatar" id="call-avatar" data-state="dialing">R</div>
+    <h2>Robin</h2>
+    <p id="call-screen-status">Calling…</p>
+    <p id="call-screen-timer" hidden>0:00</p>
+    <button type="button" class="hangup" id="call-screen-end">End</button>
+  </div>
+</div>
 <div class="toast" id="toast" hidden></div>
 
 <script>
@@ -457,18 +493,6 @@ async function loadStats() {
   } catch { /* tallies stay dashed */ }
 }
 
-function fillPatientSelect(patients) {
-  const sel = $("dial-patient");
-  const current = sel.value;
-  sel.innerHTML = `<option value="">Enter a number below…</option>` +
-    patients.map((p) =>
-      `<option value="${esc(p.phone_number)}" data-name="${esc(p.first_name)} ${esc(p.last_name)}">
-        ${esc(p.first_name)} ${esc(p.last_name)} · ${esc(fmtPhone(p.phone_number))}
-      </option>`
-    ).join("");
-  sel.value = current;
-}
-
 async function loadPatients() {
   const params = new URLSearchParams();
   const last = $("f-last").value.trim();
@@ -482,13 +506,12 @@ async function loadPatients() {
   try {
     const patients = await api("/patients?" + params.toString());
     patientsCache = patients;
-    fillPatientSelect(patients);
     tbody.innerHTML = "";
     if (!patients.length) {
       empty.hidden = false;
       empty.innerHTML = (last || phone || dob)
         ? "<strong>No matching records</strong>Adjust the search or show all registrations."
-        : "<strong>No patients yet</strong>Place a call or have someone dial the intake line.";
+        : "<strong>No patients yet</strong>Talk to Robin or have someone dial the intake line.";
       return;
     }
     empty.hidden = true;
@@ -548,7 +571,7 @@ async function loadCalls() {
     if (!calls.length) {
       empty.hidden = false;
       empty.innerHTML = callFilter === "outbound"
-        ? "<strong>No outbound calls yet</strong>Use Place a call to dial someone."
+        ? "<strong>No outbound calls yet</strong>Use Call Robin to start a browser call."
         : "<strong>No calls logged</strong>Inbound and outbound conversations will appear here.";
       return;
     }
@@ -582,7 +605,7 @@ function renderLatestOutbound() {
   const el = $("latest-outbound");
   const c = latestOutbound;
   if (!c) {
-    el.innerHTML = `<div class="row"><dt>Status</dt><dd class="none">No outbound call yet.</dd></div>`;
+    el.innerHTML = `<div class="row"><dt>Status</dt><dd class="none">No browser call yet.</dd></div>`;
     return;
   }
   el.innerHTML = [
@@ -614,14 +637,12 @@ function openPatient(p, tr) {
             <dd class="${blank ? "none" : ""}">${blank ? "Not provided" : esc(value)}</dd></div>`;
   }).join("");
   $("r-foot").innerHTML = `
-    <button class="quiet" id="r-call">Call this patient</button>
+    <button class="quiet" id="r-call">Talk to Robin</button>
     <button class="quiet danger" id="r-delete">Remove from register</button>`;
   $("r-call").onclick = () => {
     $("record").close();
-    $("dial-phone").value = p.phone_number;
-    $("dial-name").value = `${p.first_name} ${p.last_name}`;
-    $("dial-patient").value = p.phone_number;
     setTab("call");
+    startBrowserCall();
   };
   $("r-delete").onclick = deleteCurrentPatient;
   $("record").showModal();
@@ -713,44 +734,14 @@ document.querySelectorAll(".filters button").forEach((btn) => {
   });
 });
 
-$("dial-patient").addEventListener("change", () => {
-  const opt = $("dial-patient").selectedOptions[0];
-  if (!opt || !opt.value) return;
-  $("dial-phone").value = opt.value;
-  $("dial-name").value = opt.dataset.name || "";
-});
-
-$("dial-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  $("dial-error").textContent = "";
-  $("dial-btn").disabled = true;
-  try {
-    const data = await api("/calls/outbound", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        phone_number: $("dial-phone").value,
-        customer_name: $("dial-name").value || null,
-      }),
-    });
-    latestOutbound = data;
-    renderLatestOutbound();
-    toast(`Calling ${fmtPhone(data.caller_number)}…`);
-    setTab("log");
-    await refresh();
-  } catch (err) {
-    $("dial-error").textContent = err.message;
-    toast(err.message);
-  } finally {
-    $("dial-btn").disabled = false;
-  }
-});
-
 let vapiClient = null;
 let vapiCtor = null;
 let webCallActive = false;
 let activeVapiCallId = null;
 let endingByUser = false;
+let startingWebCall = false;
+let callTimer = null;
+let callStartedAt = 0;
 
 function vapiErrorText(err) {
   if (!err) return "Browser call failed.";
@@ -766,10 +757,48 @@ function vapiErrorText(err) {
   );
 }
 
-function setWebStatus(text, hidden = false) {
-  const el = $("web-call-status");
-  el.textContent = text;
-  el.hidden = hidden;
+function fmtCallClock(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60);
+  return `${m}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function stopCallTimer() {
+  if (callTimer) clearInterval(callTimer);
+  callTimer = null;
+}
+
+function startCallTimer() {
+  stopCallTimer();
+  callStartedAt = Date.now();
+  const el = $("call-screen-timer");
+  el.hidden = false;
+  el.textContent = "0:00";
+  callTimer = setInterval(() => {
+    el.textContent = fmtCallClock(Date.now() - callStartedAt);
+  }, 1000);
+}
+
+function showCallScreen(status, live = false) {
+  $("call-screen").hidden = false;
+  $("call-screen-status").textContent = status;
+  $("call-avatar").dataset.state = live ? "live" : "dialing";
+  document.body.style.overflow = "hidden";
+}
+
+function hideCallScreen() {
+  stopCallTimer();
+  $("call-screen").hidden = true;
+  $("call-screen-timer").hidden = true;
+  $("call-screen-timer").textContent = "0:00";
+  $("call-avatar").dataset.state = "dialing";
+  $("call-screen-status").textContent = "Calling…";
+  document.body.style.overflow = "";
+}
+
+function setCallStatus(text, live) {
+  $("call-screen-status").textContent = text;
+  if (live !== undefined) $("call-avatar").dataset.state = live ? "live" : "dialing";
 }
 
 async function loadVapiSdk() {
@@ -789,6 +818,9 @@ async function explainEndedCall(callId) {
     await new Promise((r) => setTimeout(r, 1500));
     const remote = await api(`/calls/vapi/${encodeURIComponent(callId)}`);
     console.log("[web-call] vapi status", remote);
+    if (remote.ended_reason === "pipeline-error-vapi-voice-failed") {
+      return "Call ended: Vapi's voice engine failed. Retry the browser call.";
+    }
     if (remote.ended_reason) return `Call ended: ${remote.ended_reason}`;
     if (remote.error) return `Call ended: ${remote.error}`;
   } catch (err) {
@@ -807,35 +839,40 @@ async function stopWebCall() {
 
 function resetWebCallUi(message) {
   webCallActive = false;
+  startingWebCall = false;
   const btn = $("web-call-btn");
-  btn.textContent = "Call from this browser";
   btn.disabled = false;
-  setWebStatus("", true);
+  hideCallScreen();
   if (message) {
     $("dial-error").textContent = message;
     toast(message);
   }
 }
 
-$("web-call-btn").addEventListener("click", async () => {
+async function hangUpBrowserCall() {
+  if (!webCallActive && !vapiClient && !startingWebCall) return;
+  console.log("[web-call] user ended the call");
+  endingByUser = true;
+  await stopWebCall();
+  resetWebCallUi();
+  toast("Browser call ended.");
+  refresh();
+}
+
+async function startBrowserCall() {
+  if (webCallActive || startingWebCall) return;
   $("dial-error").textContent = "";
   const btn = $("web-call-btn");
-  if (webCallActive) {
-    console.log("[web-call] user ended the call");
-    endingByUser = true;
-    await stopWebCall();
-    resetWebCallUi();
-    toast("Browser call ended.");
-    refresh();
-    return;
-  }
+  startingWebCall = true;
   btn.disabled = true;
-  setWebStatus("Connecting to Robin…");
+  showCallScreen("Calling…");
   try {
     console.log("[web-call] requesting microphone");
+    setCallStatus("Allow the microphone…");
     const preview = await navigator.mediaDevices.getUserMedia({ audio: true });
     preview.getTracks().forEach((t) => t.stop());
 
+    setCallStatus("Connecting…");
     const cfg = await api("/calls/dial-config");
     console.log("[web-call] dial-config assistant=%s public_key=%s",
       cfg.assistant_id, Boolean(cfg.public_key));
@@ -845,16 +882,20 @@ $("web-call-btn").addEventListener("click", async () => {
     vapiClient = new Vapi(cfg.public_key);
     vapiClient.on("call-start-progress", (ev) => {
       console.log("[web-call] progress", ev);
+      const stage = ev?.stage || ev?.status || "";
+      if (stage) setCallStatus(String(stage).replace(/-/g, " ") + "…");
     });
     vapiClient.on("call-start", () => {
       console.log("[web-call] call-start");
       webCallActive = true;
-      btn.textContent = "End browser call";
-      btn.disabled = false;
-      setWebStatus("Robin is on the line. Speak after she greets you.");
-      toast("Robin is on the line. Speak after she greets you.");
+      startingWebCall = false;
+      setCallStatus("Connected", true);
+      startCallTimer();
     });
-    vapiClient.on("speech-start", () => console.log("[web-call] assistant speaking"));
+    vapiClient.on("speech-start", () => {
+      console.log("[web-call] assistant speaking");
+      $("call-avatar").dataset.state = "live";
+    });
     vapiClient.on("call-end", async () => {
       console.log("[web-call] call-end");
       if (endingByUser) {
@@ -871,8 +912,11 @@ $("web-call-btn").addEventListener("click", async () => {
       console.error("[web-call] sdk error", err);
     });
 
+    setCallStatus("Ringing…");
     console.log("[web-call] vapi.start", cfg.assistant_id);
-    const call = await vapiClient.start(cfg.assistant_id);
+    const call = await vapiClient.start(cfg.assistant_id, {
+      voice: { provider: "openai", voiceId: "alloy" },
+    });
     console.log("[web-call] started", call);
     activeVapiCallId = call?.id;
     if (call?.id) {
@@ -886,8 +930,9 @@ $("web-call-btn").addEventListener("click", async () => {
     }
     if (!webCallActive && call) {
       webCallActive = true;
-      btn.textContent = "End browser call";
-      setWebStatus("Robin is on the line. Speak after she greets you.");
+      startingWebCall = false;
+      setCallStatus("Connected", true);
+      startCallTimer();
     }
   } catch (err) {
     console.error("[web-call] failed", err, err.debug || "");
@@ -896,7 +941,17 @@ $("web-call-btn").addEventListener("click", async () => {
       ? "Microphone permission is required for a browser call."
       : vapiErrorText(err));
   } finally {
+    startingWebCall = false;
     btn.disabled = false;
+  }
+}
+
+$("web-call-btn").addEventListener("click", startBrowserCall);
+$("call-screen-end").addEventListener("click", hangUpBrowserCall);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !$("call-screen").hidden) {
+    e.preventDefault();
+    hangUpBrowserCall();
   }
 });
 
