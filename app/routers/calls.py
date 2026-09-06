@@ -10,7 +10,7 @@ from app import crud
 from app.auth import require_login
 from app.config import settings
 from app.database import get_db
-from app.schemas import OutboundCallCreate, TranscriptOut
+from app.schemas import OutboundCallCreate, TranscriptOut, WebCallLog
 
 logger = logging.getLogger("api.calls")
 
@@ -151,14 +151,22 @@ def _vapi_headers(api_key: str | None = None) -> dict[str, str]:
     }
 
 
-def _web_call_url(payload: dict) -> str | None:
-    transport = payload.get("transport") or {}
-    return (
-        payload.get("webCallUrl")
-        or transport.get("callUrl")
-        or transport.get("roomUrl")
-        or payload.get("url")
+def _web_join_info(payload: dict) -> dict:
+    """Prefer a Daily URL that already includes the customer meeting token."""
+    transport = payload.get("transport") if isinstance(payload.get("transport"), dict) else {}
+    candidates = [
+        transport.get("callUrl"),
+        payload.get("webCallUrl"),
+        transport.get("roomUrl"),
+        payload.get("url"),
+    ]
+    token = transport.get("token") or payload.get("token")
+    with_token = next(
+        (c for c in candidates if isinstance(c, str) and ("t=" in c or "token=" in c.lower())),
+        None,
     )
+    url = with_token or next((c for c in candidates if c), None)
+    return {"url": url, "token": token}
 
 
 def _wrong_key_hint(res: httpx.Response) -> bool:
@@ -230,10 +238,10 @@ def _create_vapi_web_call() -> dict:
                 if res.status_code < 400:
                     payload = res.json()
                     logger.info(
-                        "web.created id=%s keys=%s url=%s",
+                        "web.created id=%s keys=%s join=%s",
                         payload.get("id"),
                         list(payload)[:20],
-                        bool(_web_call_url(payload)),
+                        {k: bool(v) if k == "token" else v for k, v in _web_join_info(payload).items()},
                     )
                     return payload
     except httpx.HTTPError:
@@ -262,12 +270,27 @@ def _create_vapi_web_call() -> dict:
     )
 
 
-@router.post("/web", status_code=status.HTTP_201_CREATED, summary="Start a browser call")
-def start_web_call(db: Session = Depends(get_db)):
+@router.post("/web", status_code=status.HTTP_201_CREATED, summary="Start or log a browser call")
+def start_web_call(payload: WebCallLog | None = None, db: Session = Depends(get_db)):
+    # The Vapi web SDK already created the call — just persist the id.
+    if payload and payload.call_id:
+        record = crud.upsert_call(
+            db,
+            call_id=payload.call_id,
+            caller_number=None,
+            customer_name="Browser",
+            direction="outbound",
+            status="in-progress",
+        )
+        data = _serialize_call(db, record)
+        data["vapi_call_id"] = payload.call_id
+        logger.info("web.logged id=%s", payload.call_id)
+        return {"data": data, "error": None}
+
     vapi_call = _create_vapi_web_call()
     call_id = vapi_call.get("id")
-    url = _web_call_url(vapi_call)
-    if not url:
+    join = _web_join_info(vapi_call)
+    if not join.get("url"):
         logger.warning("web.missing_url keys=%s", list(vapi_call)[:20])
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY,
@@ -283,9 +306,10 @@ def start_web_call(db: Session = Depends(get_db)):
         status=vapi_call.get("status") or "queued",
     )
     data = _serialize_call(db, record)
-    data["web_call_url"] = url
+    data["web_call_url"] = join["url"]
+    data["daily_token"] = join.get("token")
     data["vapi_call_id"] = call_id
-    logger.info("web.started id=%s", call_id)
+    logger.info("web.started id=%s token=%s", call_id, bool(join.get("token")))
     return {"data": data, "error": None}
 
 

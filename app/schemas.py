@@ -365,6 +365,12 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class WebCallLog(BaseModel):
+    """If call_id is set, just record a browser call the Vapi web SDK already started."""
+
+    call_id: str | None = None
+
+
 class OutboundCallCreate(BaseModel):
     phone_number: str
     customer_name: str | None = None
