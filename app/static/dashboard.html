@@ -180,7 +180,7 @@
   }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
-<script src="https://unpkg.com/@daily-co/daily-js@0.87.0/dist/daily.js"></script>
+<script src="https://unpkg.com/@daily-co/daily-js@0.92.2/dist/daily.js"></script>
 </head>
 <body>
 
@@ -788,13 +788,45 @@ function setWebStatus(text, hidden = false) {
   el.hidden = hidden;
 }
 
+function signalPlayable(call, why) {
+  if (!call) return;
+  try {
+    call.sendAppMessage("playable");
+    console.log("[web-call] sent playable via", why);
+  } catch (err) {
+    console.warn("[web-call] playable failed", why, err);
+  }
+}
+
+async function attachRemoteAudio(track, participantId) {
+  if (!track || track.kind !== "audio") return;
+  document.querySelectorAll(`audio[data-vapi-remote="${participantId}"]`).forEach((el) => el.remove());
+  const player = document.createElement("audio");
+  player.autoplay = true;
+  player.playsInline = true;
+  player.dataset.vapiRemote = participantId;
+  player.srcObject = new MediaStream([track]);
+  document.body.appendChild(player);
+  try {
+    await player.play();
+    console.log("[web-call] remote audio playing", participantId);
+  } catch (err) {
+    console.warn("[web-call] audio.play blocked", err);
+  }
+}
+
 async function explainEndedCall(callId) {
   if (!callId) return "";
   try {
-    await new Promise((r) => setTimeout(r, 800));
+    await new Promise((r) => setTimeout(r, 1500));
     const remote = await api(`/calls/vapi/${encodeURIComponent(callId)}`);
+    console.log("[web-call] vapi status", remote);
     if (remote.ended_reason) return `Call ended: ${remote.ended_reason}`;
-  } catch { /* keep the Daily message */ }
+    if (remote.error) return `Call ended: ${remote.error}`;
+    if (remote.status && remote.status !== "queued") return `Call status: ${remote.status}`;
+  } catch (err) {
+    console.warn("[web-call] status lookup failed", err);
+  }
   return "";
 }
 
@@ -802,6 +834,7 @@ async function destroyDailyCall() {
   const call = dailyCall;
   dailyCall = null;
   webCallActive = false;
+  document.querySelectorAll("audio[data-vapi-remote]").forEach((el) => el.remove());
   if (!call) return;
   try { await call.leave(); } catch { /* already left */ }
   try { await call.destroy(); } catch { /* already gone */ }
@@ -858,7 +891,7 @@ $("web-call-btn").addEventListener("click", async () => {
     dailyCall = Daily.createCallObject({
       audioSource: true,
       videoSource: false,
-      subscribeToTracksAutomatically: true,
+      subscribeToTracksAutomatically: false,
     });
     dailyCall.on("joined-meeting", () => {
       console.log("[web-call] joined Daily room");
@@ -867,6 +900,27 @@ $("web-call-btn").addEventListener("click", async () => {
       btn.disabled = false;
       setWebStatus("Robin is on the line. Speak after she greets you.");
       toast("Robin is on the line. Speak after she greets you.");
+      signalPlayable(dailyCall, "joined-meeting");
+      [250, 800, 1600].forEach((ms) => {
+        setTimeout(() => signalPlayable(dailyCall, `retry-${ms}ms`), ms);
+      });
+    });
+    dailyCall.on("participant-joined", (e) => {
+      const p = e?.participant;
+      if (!p || p.local) return;
+      console.log("[web-call] participant-joined", p.user_name, p.session_id);
+      dailyCall.updateParticipant(p.session_id, {
+        setSubscribedTracks: { audio: true, video: false },
+      });
+      signalPlayable(dailyCall, "participant-joined");
+    });
+    dailyCall.on("track-started", async (e) => {
+      if (!e?.participant || e.participant.local) return;
+      console.log("[web-call] track-started", e.track?.kind, e.participant.user_name);
+      if (e.track?.kind === "audio") {
+        await attachRemoteAudio(e.track, e.participant.session_id);
+      }
+      signalPlayable(dailyCall, "track-started");
     });
     dailyCall.on("left-meeting", async () => {
       console.log("[web-call] left Daily room");

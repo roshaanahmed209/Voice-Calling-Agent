@@ -301,12 +301,25 @@ def vapi_call_status(call_id: str):
     if res.status_code >= 400:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, _vapi_error_message(res))
     payload = res.json()
+    artifact = payload.get("artifact") or {}
+    logger.info(
+        "web.status id=%s status=%s ended=%s type=%s duration=%s",
+        call_id,
+        payload.get("status"),
+        payload.get("endedReason"),
+        payload.get("type"),
+        payload.get("duration"),
+    )
     return {
         "data": {
             "status": payload.get("status"),
             "ended_reason": payload.get("endedReason"),
             "type": payload.get("type"),
             "duration": payload.get("duration"),
+            "started_at": payload.get("startedAt"),
+            "ended_at": payload.get("endedAt"),
+            "error": payload.get("error"),
+            "messages": payload.get("messages") or artifact.get("messages"),
         },
         "error": None,
     }
