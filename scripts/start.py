@@ -15,8 +15,13 @@ sys.path.insert(0, str(ROOT))
 
 import uvicorn
 
+from app.logging_config import configure_logging
+from app.seed import seed_if_needed
+
 
 def main() -> None:
+    configure_logging()
+    seed_if_needed()
     port = int(os.environ.get("PORT", "8000"))
     uvicorn.run("app.main:app", host="0.0.0.0", port=port, app_dir=str(ROOT))
 

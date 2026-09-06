@@ -23,6 +23,7 @@ from app.config import settings
 from app.database import get_db, init_db
 from app.logging_config import configure_logging
 from app.routers import auth, calls, patients, vapi_webhook
+from app.seed import seed_if_needed
 
 configure_logging()
 logger = logging.getLogger("app")
@@ -33,6 +34,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    seed_if_needed()
     logger.info("Started. db=%s env=%s",
                 settings.normalized_database_url.split("@")[-1], settings.environment)
     yield
