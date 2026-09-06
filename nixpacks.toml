@@ -1,0 +1,5 @@
+[start]
+cmd = "python scripts/start.py"
+
+[variables]
+PYTHONPATH = "/app"
