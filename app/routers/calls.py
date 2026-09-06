@@ -144,9 +144,9 @@ def start_outbound(payload: OutboundCallCreate, db: Session = Depends(get_db)):
     return {"data": _serialize_call(db, record), "error": None}
 
 
-def _vapi_headers() -> dict[str, str]:
+def _vapi_headers(api_key: str | None = None) -> dict[str, str]:
     return {
-        "Authorization": f"Bearer {settings.vapi_api_key}",
+        "Authorization": f"Bearer {api_key or settings.vapi_api_key}",
         "Content-Type": "application/json",
     }
 
@@ -161,17 +161,29 @@ def _web_call_url(payload: dict) -> str | None:
     )
 
 
+def _wrong_key_hint(res: httpx.Response) -> bool:
+    text = (res.text or "").lower()
+    return "private key" in text and "public key" in text
+
+
 def _create_vapi_web_call() -> dict:
     """Create a live Daily room on Vapi. The browser joins that URL.
 
-    Tries POST /call/web first (current SDK), then POST /call without a
-    phone number. If assistantOverrides are rejected, retries with a
-    minimal body so a strict schema still works.
+    POST /call is a server route and must use the private key.
+    POST /call/web is the client SDK route and must use the public key.
+    Hitting /call/web with the private key returns Vapi's "Invalid Key" hint
+    and used to abort before /call was tried.
     """
-    if not settings.vapi_api_key:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "VAPI_API_KEY is not configured.")
     if not settings.vapi_assistant_id:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "VAPI_ASSISTANT_ID is not configured.")
+
+    private = (settings.vapi_api_key or "").strip()
+    public = (settings.vapi_public_key or "").strip()
+    if not private and not public:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Set VAPI_API_KEY (private) and VAPI_PUBLIC_KEY (public) in .env.",
+        )
 
     bodies = [
         {
@@ -187,32 +199,39 @@ def _create_vapi_web_call() -> dict:
         {
             "assistantId": settings.vapi_assistant_id,
             "customer": {"name": "Browser"},
-            "assistantOverrides": {
-                "customerJoinTimeoutSeconds": 90,
-                "endCallFunctionEnabled": False,
-            },
-        },
-        {
-            "assistantId": settings.vapi_assistant_id,
-            "customer": {"name": "Browser"},
         },
     ]
+
+    # (path, key) — private key only on /call; public key only on /call/web.
+    attempts: list[tuple[str, str]] = []
+    if private:
+        attempts.append(("/call", private))
+    if public and public != private:
+        attempts.append(("/call", public))  # env vars swapped
+        attempts.append(("/call/web", public))
+    elif public:
+        attempts.append(("/call/web", public))
+
     last: httpx.Response | None = None
     try:
         with httpx.Client(timeout=30) as client:
             for body in bodies:
-                for path in ("/call/web", "/call"):
+                for path, key in attempts:
                     res = client.post(
                         f"https://api.vapi.ai{path}",
-                        headers=_vapi_headers(),
+                        headers=_vapi_headers(key),
                         json=body,
                     )
                     last = res
                     if res.status_code < 400:
+                        if key == public and path == "/call":
+                            logger.warning(
+                                "web.used_public_key_on_server_api — "
+                                "VAPI_API_KEY and VAPI_PUBLIC_KEY look swapped in .env"
+                            )
                         return res.json()
-                    if res.status_code not in (400, 404, 405, 422):
-                        break
-                if last is not None and last.status_code not in (400, 404, 405, 422):
+                    if res.status_code in (400, 404, 405, 422) or _wrong_key_hint(res):
+                        continue
                     break
     except httpx.HTTPError:
         logger.exception("web.vapi_unreachable")
@@ -223,10 +242,14 @@ def _create_vapi_web_call() -> dict:
 
     logger.warning("web.vapi_rejected status=%s body=%s", last.status_code if last else 0,
                    (last.text[:500] if last is not None else ""))
-    raise HTTPException(
-        status.HTTP_502_BAD_GATEWAY,
-        _vapi_error_message(last) if last is not None else "Vapi rejected the browser call.",
+    hint = (
+        "Vapi rejected the key. In the Vapi dashboard, Settings → API Keys: "
+        "put the Private key in VAPI_API_KEY and the Public key in VAPI_PUBLIC_KEY."
     )
+    detail = _vapi_error_message(last) if last is not None else "Vapi rejected the browser call."
+    if last is not None and _wrong_key_hint(last):
+        detail = hint
+    raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail)
 
 
 @router.post("/web", status_code=status.HTTP_201_CREATED, summary="Start a browser call")
